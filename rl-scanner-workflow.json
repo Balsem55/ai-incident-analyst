@@ -1,0 +1,169 @@
+{
+  "name": "URL Scanner - DevSecOps",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "scan-url",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Receive URL",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const url = $input.first().json.body.url;\nconst encoded = Buffer.from(url).toString('base64').replace(/=/g, '').replace(/\\+/g, '-').replace(/\\//g, '_');\nreturn [{ json: { url: url, encoded_url: encoded } }];"
+      },
+      "id": "2",
+      "name": "Encode URL",
+      "type": "n8n-nodes-base.code",
+      "position": [450, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://www.virustotal.com/api/v3/urls/' + $json.encoded_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-apikey",
+              "value": "973402d7f65e16c4aaedc27f8a08536b8f11e32311a8e981399934bd8acb4aa2"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3",
+      "name": "VirusTotal Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [700, 200],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://urlscan.io/api/v1/scan/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "API-Key",
+              "value": "019ee1dc-babc-71d9-8ded-c2e415d1fcb0"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"url\": \"{{ $('Encode URL').first().json.url }}\", \"visibility\": \"public\" }",
+        "options": {}
+      },
+      "id": "4",
+      "name": "URLScan.io Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [700, 400],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "jsCode": "const vtData = $('VirusTotal Scan').first().json;\nconst urlscanData = $('URLScan.io Scan').first().json;\nconst originalUrl = $('Encode URL').first().json.url;\n\nconst malicious = vtData.data?.attributes?.last_analysis_stats?.malicious || 0;\nconst suspicious = vtData.data?.attributes?.last_analysis_stats?.suspicious || 0;\nconst total = vtData.data?.attributes?.last_analysis_stats?.total || 0;\n\nconst severity = malicious > 5 ? 'critical' : malicious > 2 ? 'high' : malicious > 0 ? 'medium' : 'low';\n\nreturn [{\n  json: {\n    url: originalUrl,\n    timestamp: new Date().toISOString(),\n    virustotal: {\n      malicious: malicious,\n      suspicious: suspicious,\n      total_engines: total,\n      severity: severity\n    },\n    urlscan: {\n      scan_id: urlscanData.uuid || 'N/A',\n      result_url: urlscanData.result || 'N/A'\n    },\n    is_malicious: malicious > 0,\n    severity: severity\n  }\n}];"
+      },
+      "id": "5",
+      "name": "Combine Results",
+      "type": "n8n-nodes-base.code",
+      "position": [950, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_malicious }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6",
+      "name": "Is Malicious?",
+      "type": "n8n-nodes-base.if",
+      "position": [1200, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: '🚨 MALICIOUS URL DETECTED', url: $json.url, severity: $json.severity, virustotal: $json.virustotal, urlscan: $json.urlscan, timestamp: $json.timestamp }) }}"
+      },
+      "id": "7",
+      "name": "Alert Malicious",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [1450, 200],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: '✅ URL is Safe', url: $json.url, virustotal: $json.virustotal, urlscan: $json.urlscan, timestamp: $json.timestamp }) }}"
+      },
+      "id": "8",
+      "name": "URL is Safe",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [1450, 400],
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Receive URL": {
+      "main": [[{ "node": "Encode URL", "type": "main", "index": 0 }]]
+    },
+    "Encode URL": {
+      "main": [
+        [
+          { "node": "VirusTotal Scan", "type": "main", "index": 0 },
+          { "node": "URLScan.io Scan", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "VirusTotal Scan": {
+      "main": [[{ "node": "Combine Results", "type": "main", "index": 0 }]]
+    },
+    "URLScan.io Scan": {
+      "main": [[{ "node": "Combine Results", "type": "main", "index": 0 }]]
+    },
+    "Combine Results": {
+      "main": [[{ "node": "Is Malicious?", "type": "main", "index": 0 }]]
+    },
+    "Is Malicious?": {
+      "main": [
+        [{ "node": "Alert Malicious", "type": "main", "index": 0 }],
+        [{ "node": "URL is Safe", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "name": "IP Scanner - DevSecOps",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "scan-ip",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Receive IP",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.abuseipdb.com/api/v2/check?ipAddress=' + $json.body.ip + '&maxAgeInDays=90' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Key",
+              "value": "13062a4521ab871e3ec5afee435599fb99e49ee54ca5563dacac1866ffecd91772fc37c9a95425ab"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2",
+      "name": "AbuseIPDB Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [500, 300],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json.data;\n\nconst abuseScore = data.abuseConfidenceScore || 0;\nconst severity = abuseScore > 80 ? 'critical' : abuseScore > 50 ? 'high' : abuseScore > 20 ? 'medium' : 'low';\nconst isMalicious = abuseScore > 20;\n\nreturn [{\n  json: {\n    ip: data.ipAddress,\n    timestamp: new Date().toISOString(),\n    abuseipdb: {\n      abuse_score: abuseScore,\n      country: data.countryCode || 'N/A',\n      isp: data.isp || 'N/A',\n      total_reports: data.totalReports || 0,\n      last_reported: data.lastReportedAt || 'N/A',\n      is_tor: data.isTor || false\n    },\n    is_malicious: isMalicious,\n    severity: severity\n  }\n}];"
+      },
+      "id": "3",
+      "name": "Parse Results",
+      "type": "n8n-nodes-base.code",
+      "position": [750, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_malicious }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4",
+      "name": "Is Malicious?",
+      "type": "n8n-nodes-base.if",
+      "position": [1000, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: '🚨 MALICIOUS IP DETECTED', ip: $json.ip, severity: $json.severity, abuseipdb: $json.abuseipdb, timestamp: $json.timestamp }) }}"
+      },
+      "id": "5",
+      "name": "Alert Malicious IP",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [1250, 200],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: '✅ IP is Safe', ip: $json.ip, severity: $json.severity, abuseipdb: $json.abuseipdb, timestamp: $json.timestamp }) }}"
+      },
+      "id": "6",
+      "name": "IP is Safe",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [1250, 400],
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Receive IP": {
+      "main": [[{ "node": "AbuseIPDB Scan", "type": "main", "index": 0 }]]
+    },
+    "AbuseIPDB Scan": {
+      "main": [[{ "node": "Parse Results", "type": "main", "index": 0 }]]
+    },
+    "Parse Results": {
+      "main": [[{ "node": "Is Malicious?", "type": "main", "index": 0 }]]
+    },
+    "Is Malicious?": {
+      "main": [
+        [{ "node": "Alert Malicious IP", "type": "main", "index": 0 }],
+        [{ "node": "IP is Safe", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
