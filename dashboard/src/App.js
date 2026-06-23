@@ -146,9 +146,9 @@ return (
         {/* Tabs */}
       <div style={styles.tabs}>
         {[
-          { id: "logs", label: "📋 Log Analyzer" },
-          { id: "url", label: "🌐 URL Scanner" },
-          { id: "ip", label: "🔍 IP Scanner" },
+          { id: "logs", label: " Log Analyzer" },
+          { id: "url", label: " URL Scanner" },
+          { id: "ip", label: " IP Scanner" },
         ].map((t) => (
           <button
             key={t.id}
@@ -162,7 +162,6 @@ return (
           </button>
         ))}
       </div>
-      {/* Input Panel */}
       <div style={styles.inputPanel}>
         {activeTab === "logs" && (
           <div style={styles.inputGroup}>
@@ -230,7 +229,6 @@ return (
             </button>
           </div>
         )}
-        {/* Quick tests */}
         <div style={styles.quickTests}>
           <span style={styles.quickLabel}>Quick test:</span>
           {activeTab === "logs" && (
@@ -254,7 +252,6 @@ return (
           )}
         </div>
       </div>
-      {/* Results */}
       <div style={styles.resultsSection}>
         <div style={styles.resultsHeader}>
           <span style={styles.resultsTitle}>Results</span>
