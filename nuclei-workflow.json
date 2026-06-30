@@ -1,0 +1,96 @@
+{
+  "name": "Nuclei Scanner - DevSecOps",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "scan-nuclei",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Receive Target",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nreturn [{\n  json: {\n    target: body.target || 'unknown',\n    total: body.total || 0,\n    critical: body.critical || 0,\n    high: body.high || 0,\n    medium: body.medium || 0,\n    vulnerabilities: body.vulnerabilities || []\n  }\n}];"
+      },
+      "id": "2",
+      "name": "Parse Results",
+      "type": "n8n-nodes-base.code",
+      "position": [500, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "llama3.2:3b"
+            },
+            {
+              "name": "prompt",
+              "value": "=You are a security expert. Analyze these vulnerability scan results and respond with JSON only: {\"risk_level\": \"low/medium/high/critical\", \"summary\": \"brief summary\", \"top_threat\": \"most dangerous finding\", \"recommendation\": \"what to do\"}. Results: {{ JSON.stringify($json) }}"
+            },
+            {
+              "name": "stream",
+              "value": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3",
+      "name": "Analyze with Ollama",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [750, 300],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "jsCode": "const ollamaResponse = $input.first().json.response;\nconst scanData = $('Parse Results').first().json;\n\nlet analysis;\ntry {\n  const jsonMatch = ollamaResponse.match(/\\{[\\s\\S]*\\}/);\n  analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : { risk_level: 'unknown', summary: ollamaResponse };\n} catch(e) {\n  analysis = { risk_level: 'unknown', summary: ollamaResponse };\n}\n\nreturn [{\n  json: {\n    target: scanData.target,\n    timestamp: new Date().toISOString(),\n    scan_summary: {\n      total: scanData.total || 0,\n      critical: scanData.critical || 0,\n      high: scanData.high || 0,\n      medium: scanData.medium || 0\n    },\n    ai_analysis: analysis,\n    vulnerabilities: scanData.vulnerabilities || []\n  }\n}];"
+      },
+      "id": "4",
+      "name": "Build Report",
+      "type": "n8n-nodes-base.code",
+      "position": [1000, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "5",
+      "name": "Return Report",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [1250, 300],
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Receive Target": {
+      "main": [[{ "node": "Parse Results", "type": "main", "index": 0 }]]
+    },
+    "Parse Results": {
+      "main": [[{ "node": "Analyze with Ollama", "type": "main", "index": 0 }]]
+    },
+    "Analyze with Ollama": {
+      "main": [[{ "node": "Build Report", "type": "main", "index": 0 }]]
+    },
+    "Build Report": {
+      "main": [[{ "node": "Return Report", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
