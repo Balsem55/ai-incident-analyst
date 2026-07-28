@@ -24,6 +24,7 @@ export default function App (){
   const [logSource, setLogSource] = useState("firewall");
   const [urlInput, setUrlInput] = useState("");
   const [ipInput, setIpInput] = useState("");
+  const [nucleiInput, setNucleiInput] = useState("");
 const stats = {
   total : results.length,
   incidents : results.filter((r)=> r.is_malicious || r.incident).length,
@@ -111,6 +112,47 @@ setIpInput("");
     }
     setLoading(false);
   };
+  const scanNuclei = async () => {
+  if (!nucleiInput.trim()) return;
+  setLoading(true);
+  try {
+    // Lance le scan Nuclei
+    await fetch(`http://localhost:5678/webhook/scan-nuclei`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: nucleiInput })
+    });
+
+    // Attend 30 secondes que Nuclei finisse
+    await new Promise(resolve => setTimeout(resolve, 30000));
+
+    // Lit les résultats
+    const res = await axios.post(`${N8N_BASE}/scan-nuclei`, {
+      target: nucleiInput
+    });
+    const d = res.data;
+    setResults((prev) => [
+      {
+        id: Date.now(),
+        type: "NUCLEI",
+        target: nucleiInput,
+        status: d.ai_analysis?.risk_level === 'critical' || d.ai_analysis?.risk_level === 'high'
+          ? ' VULNERABILITIES FOUND'
+          : ' No Critical Issues',
+        severity: d.ai_analysis?.risk_level || "low",
+        explanation: `Total: ${d.scan_summary?.total || 0} | Critical: ${d.scan_summary?.critical || 0} | High: ${d.scan_summary?.high || 0} | Medium: ${d.scan_summary?.medium || 0} | ${d.ai_analysis?.recommendation || ''}`,
+        timestamp: d.timestamp || new Date().toISOString(),
+        is_malicious: d.scan_summary?.total > 0,
+        incident: d.scan_summary?.total > 0,
+      },
+      ...prev,
+    ]);
+    setNucleiInput("");
+  } catch (e) {
+    alert("Erreur: " + e.message);
+  }
+  setLoading(false);
+};
 return (
     <div style={styles.root}>
 
@@ -149,6 +191,7 @@ return (
           { id: "logs", label: " Log Analyzer" },
           { id: "url", label: " URL Scanner" },
           { id: "ip", label: " IP Scanner" },
+          { id: "nuclei", label: " Nuclei Scanner" },
         ].map((t) => (
           <button
             key={t.id}
@@ -229,6 +272,7 @@ return (
             </button>
           </div>
         )}
+
         <div style={styles.quickTests}>
           <span style={styles.quickLabel}>Quick test:</span>
           {activeTab === "logs" && (
@@ -250,6 +294,12 @@ return (
               <button style={styles.quickBtn} onClick={() => setIpInput("185.220.101.1")}>185.220.101.1</button>
             </>
           )}
+          {activeTab === "nuclei" && (
+  <>
+    <button style={styles.quickBtn} onClick={() => setNucleiInput("http://ai-incident-analyst-dvwa-1:80")}>DVWA</button>
+    <button style={styles.quickBtn} onClick={() => setNucleiInput("http://192.168.56.1:8080")}>Local DVWA</button>
+  </>
+)}
         </div>
       </div>
       <div style={styles.resultsSection}>
