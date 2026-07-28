@@ -272,7 +272,24 @@ return (
             </button>
           </div>
         )}
-
+{activeTab === "nuclei" && (
+          <div style={styles.inputGroup}>
+            <input
+              style={styles.input}
+              placeholder="Enter target URL (e.g. http://192.168.56.1:8080)"
+              value={nucleiInput}
+              onChange={(e) => setNucleiInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && scanNuclei()}
+            />
+            <button
+              onClick={scanNuclei}
+              disabled={loading}
+              style={styles.btnAnalyze}
+            >
+              {loading ? "Scanning..." : "Scan"}
+            </button>
+          </div>
+        )}
         <div style={styles.quickTests}>
           <span style={styles.quickLabel}>Quick test:</span>
           {activeTab === "logs" && (
